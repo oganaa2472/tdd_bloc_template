@@ -1,0 +1,1 @@
+const String baseUrl = "https://68a6fbe7639c6a54e9a090e3.mockapi.io/api/v1";
