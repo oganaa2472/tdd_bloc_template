@@ -16,7 +16,45 @@ Since we are focusing on Flutter we are going to start with lib folder.
 
 Rest of the folders would reside inside lib/core and lib/src folder. Your core folder would contain the core features of the app written in dart code (mostly) and src folder would contain the screens or pages.
 
-Three layers are Presentation layer, Domain layer and Data layer. Look at the flow them how they are called. The below picture show bidirectional flow of the layer communications.
+Three layers are Presentation layer, Domain layer and Data layer. Look at the flow and how they communicate.
+
+### Architecture overview
+
+```mermaid
+graph LR
+  subgraph Presentation
+    UI[Views/Widgets]
+    SM[State Mgmt (Cubit/BLoC)]
+  end
+  subgraph Domain
+    UC[Usecases]
+    ENT[Entities]
+    REPO_ABS[Repositories (abstract)]
+  end
+  subgraph Data
+    REPO_IMPL[Repositories (impl)]
+    DS[Data Sources]
+    NET[HTTP Client]
+    MODEL[Models]
+  end
+
+  UI --> SM
+  SM --> UC
+  UC --> REPO_ABS
+  REPO_ABS -.implemented by .-> REPO_IMPL
+  REPO_IMPL --> DS
+  DS --> NET
+  DS --> MODEL
+  MODEL --> ENT
+
+  classDef layer fill:#f8f9fc,stroke:#cfd8dc,color:#263238;
+  class UI,SM,UC,ENT,REPO_ABS,REPO_IMPL,DS,NET,MODEL layer;
+```
+
+Key rules:
+- Presentation depends on Domain; Domain depends on nothing; Data depends on Domain.
+- Domain exposes abstractions; Data implements them.
+- Errors are mapped to `Failure` types at the repo boundary.
 
 
 
@@ -163,7 +201,34 @@ Then domain layer would feed data back to the bloc. And bloc will show the data 
 
 
 
-Let's take another look. This might help how you understand the basic flow. The below diagram shows how the basic flow starts from Presentation layer to the domain layer to the data layer. This is uni directional.
+Let's take another look. This might help how you understand the basic flow. The diagram below shows how the basic flow starts from Presentation layer to the domain layer to the data layer (uni-directional).
+
+### Create User flow (end-to-end)
+
+```mermaid
+sequenceDiagram
+  participant UI as UI (HomeScreen/AddUserSheet)
+  participant C as AuthCubit
+  participant UC as CreateUser (Usecase)
+  participant R as AuthRepo (abstract)
+  participant RI as AuthRepoImpl
+  participant DS as AuthRemoteDataSource
+  participant HTTP as http.Client
+
+  UI->>C: createUser(name, avatar, createdAt)
+  C->>UC: call(CreateUserParams)
+  UC->>R: createUser(...)
+  R-->>RI: implemented by
+  RI->>DS: createUser(...)
+  DS->>HTTP: POST $baseUrl/users JSON body
+  HTTP-->>DS: 201 Created
+  DS-->>RI: void
+  RI-->>UC: Right(void)
+  UC-->>C: Right(void)
+  C-->>UI: emit(UserCreated)
+```
+
+On success the UI closes the sheet, shows a SnackBar, and refreshes the list.
 
 
 
@@ -178,3 +243,92 @@ This starts with installing get_it package and then creating an instance of it. 
 You should start with BLoC/Cubit/GetX at the top with registerFactory() method. Inside the registerFactory() method you should get your app logic, it means your state management mechanism.
 
 As we initialize app logic(bloc/cubit/getx), we don't pass the dependencies directly, rather we pass the sl(), this service location instance sl() will find the related dependencies.
+
+```mermaid
+graph TD
+  SL[GetIt Service Locator]
+  CUBIT[AuthCubit]
+  UC1[CreateUser]
+  UC2[GetUsers]
+  REPO[AuthRepoImpl]
+  DS[AuthRemoteDataSource]
+  HTTP[http.Client]
+
+  SL --> CUBIT
+  SL --> UC1
+  SL --> UC2
+  SL --> REPO
+  SL --> DS
+  SL --> HTTP
+
+  CUBIT --> UC1
+  CUBIT --> UC2
+  UC1 --> REPO
+  UC2 --> REPO
+  REPO --> DS
+  DS --> HTTP
+```
+
+### Project structure (key parts)
+
+```text
+lib/
+  core/
+    errors/          # Failure
+    service/         # GetIt setup
+    usecase/         # Base usecase types
+    utils/           # typedefs, constants
+  src/
+    authentication/
+      data/
+        datasources/ # Remote data source (http)
+        models/      # UserModel
+        repo/        # AuthRepoImpl
+      domain/
+        entities/    # User
+        repositories/# AuthRepo (abstract)
+        usecases/    # CreateUser, GetUsers
+      presentation/
+        cubit/       # AuthCubit, AuthState
+        views/       # HomeScreen
+        widgets/     # Sheets, loading, empty state
+```
+
+### API endpoints
+
+- baseUrl: `https://68a6fbe7639c6a54e9a090e3.mockapi.io/api/v1`
+- POST create user: `POST /users` body: `{ createdAt, name, avatar }`
+- GET users: `GET /users`
+
+### How to run
+
+```bash
+flutter pub get
+flutter run
+```
+
+### Code quality
+
+```bash
+flutter analyze
+```
+
+Notes:
+- Unused imports and string interpolation infos can be cleaned gradually.
+- Network errors surface as `AuthError` states and are shown via SnackBar.
+
+### Screenshots
+
+Place your screenshots in `assets/readme/` with the following names:
+
+- Home screen
+
+![Home](assets/readme/home.png)
+
+- Users list
+
+![Users List](assets/readme/list.png)
+
+- Create user sheet
+
+![Create User](assets/readme/create_user.png)
